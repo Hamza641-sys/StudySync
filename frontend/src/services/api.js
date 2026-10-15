@@ -1,6 +1,6 @@
 // StudySync Pro Frontend API Service Layer
-
-const BASE_URL = '/api';
+// In production, VITE_API_URL points to the deployed backend. In dev, falls back to /api proxy.
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 function getAuthHeaders() {
   const token = localStorage.getItem('studysync_token') || 'demo_student_token';

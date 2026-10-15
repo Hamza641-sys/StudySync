@@ -23,9 +23,13 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// CORS setup
+// CORS setup — dev: allow all origins, production: allow only CLIENT_URL (Vercel)
+const allowedOrigins = config.NODE_ENV === 'production'
+  ? [config.CLIENT_URL, /\.vercel\.app$/].filter(Boolean)
+  : true;
+
 app.use(cors({
-  origin: true, // Allow frontend dev server
+  origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id', 'x-user-email', 'x-user-name']
