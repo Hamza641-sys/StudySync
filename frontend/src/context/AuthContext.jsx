@@ -1,130 +1,134 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { api } from '../services/api';
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  updateProfile,
+} from 'firebase/auth';
+import { auth } from '../services/firebase';
+import { getUser, saveUser } from '../services/firestoreService';
 
 const AuthContext = createContext(null);
 
-const DEFAULT_DEMO_USER = {
-  id: 'usr_roshan_demo',
-  name: 'Roshan',
-  email: 'roshan@studysync.edu',
-  level: 1,
-  xp: 45,
-  xpMax: 150,
-  streaks: {
-    visitStreak: 2,
-    quizStreak: 1,
-    reviewStreak: 1
-  }
-};
-
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try {
-      const stored = localStorage.getItem('studysync_user');
-      return stored ? JSON.parse(stored) : DEFAULT_DEMO_USER;
-    } catch (e) {
-      return DEFAULT_DEMO_USER;
-    }
-  });
-
-  const [token, setToken] = useState(() => {
-    return localStorage.getItem('studysync_token') || 'demo_token';
-  });
-
-  const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState(null);
+  const [firebaseUser, setFirebaseUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user) {
-      localStorage.setItem('studysync_user', JSON.stringify(user));
-    }
-  }, [user]);
-
-  const login = async (email, password) => {
-    setLoading(true);
-    try {
-      const res = await api.login(email, password);
-      if (res.success && res.user) {
-        setUser(res.user);
-        setToken(res.token);
-        localStorage.setItem('studysync_user', JSON.stringify(res.user));
-        localStorage.setItem('studysync_token', res.token);
-        return { success: true };
+    const unsub = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        setFirebaseUser(fbUser);
+        // Load full profile from Firestore
+        let profile = await getUser(fbUser.uid);
+        if (!profile) {
+          profile = {
+            id: fbUser.uid,
+            name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Student',
+            email: fbUser.email,
+            level: 1,
+            xp: 0,
+            xpMax: 150,
+            streaks: { visitStreak: 1, quizStreak: 0, reviewStreak: 0 },
+            createdAt: new Date().toISOString(),
+          };
+          await saveUser(profile);
+        }
+        setUser(profile);
+      } else {
+        setFirebaseUser(null);
+        setUser(null);
       }
-      return { success: false, error: res.error || 'Login failed' };
-    } catch (err) {
-      return { success: false, error: err.message };
-    } finally {
       setLoading(false);
-    }
-  };
+    });
+    return () => unsub();
+  }, []);
 
   const register = async (name, email, password) => {
-    setLoading(true);
     try {
-      const res = await api.register(name, email, password);
-      if (res.success && res.user) {
-        setUser(res.user);
-        setToken(res.token);
-        localStorage.setItem('studysync_user', JSON.stringify(res.user));
-        localStorage.setItem('studysync_token', res.token);
-        return { success: true };
-      }
-      return { success: false, error: res.error || 'Registration failed' };
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      await updateProfile(cred.user, { displayName: name });
+      const profile = {
+        id: cred.user.uid,
+        name,
+        email,
+        level: 1,
+        xp: 0,
+        xpMax: 150,
+        streaks: { visitStreak: 1, quizStreak: 0, reviewStreak: 0 },
+        createdAt: new Date().toISOString(),
+      };
+      await saveUser(profile);
+      setUser(profile);
+      return { success: true };
     } catch (err) {
       return { success: false, error: err.message };
-    } finally {
-      setLoading(false);
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('studysync_user');
-    localStorage.removeItem('studysync_token');
-    setUser(null);
-    setToken(null);
+  const login = async (email, password) => {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
   };
 
-  // Student Switcher to effortlessly verify per-user isolation (Module 2)
+  const logout = async () => {
+    await signOut(auth);
+    setUser(null);
+    setFirebaseUser(null);
+  };
+
+  const incrementStreak = async (streakType) => {
+    if (!user) return;
+    const updated = {
+      ...user,
+      xp: Math.min((user.xp || 0) + 15, user.xpMax || 150),
+      streaks: {
+        ...user.streaks,
+        [streakType]: (user.streaks?.[streakType] || 0) + 1,
+      },
+    };
+    if (updated.xp >= updated.xpMax) {
+      updated.level = (updated.level || 1) + 1;
+      updated.xp = updated.xp - updated.xpMax;
+    }
+    setUser(updated);
+    await saveUser(updated);
+  };
+
+  // Demo student switcher for testing isolation
   const switchDemoStudent = (name, email, id) => {
-    const newUser = {
+    const demo = {
       id,
       name,
       email,
       level: 1,
       xp: 20,
       xpMax: 150,
-      streaks: { visitStreak: 1, quizStreak: 1, reviewStreak: 1 }
+      streaks: { visitStreak: 1, quizStreak: 0, reviewStreak: 0 },
+      isDemo: true,
     };
-    setUser(newUser);
-    setToken(id);
-    localStorage.setItem('studysync_user', JSON.stringify(newUser));
-    localStorage.setItem('studysync_token', id);
-  };
-
-  const incrementStreak = async (streakType) => {
-    try {
-      const res = await api.updateStreak(streakType);
-      if (res.success && res.user) {
-        setUser(res.user);
-      }
-    } catch (err) {
-      console.error('Streak update failed:', err);
-    }
+    setUser(demo);
   };
 
   return (
     <AuthContext.Provider value={{
       user,
-      token,
+      firebaseUser,
       loading,
+      isAuthenticated: Boolean(user),
       login,
       register,
       logout,
-      switchDemoStudent,
       incrementStreak,
-      isAuthenticated: Boolean(user)
+      switchDemoStudent,
     }}>
-      {children}
+      {!loading && children}
     </AuthContext.Provider>
   );
 }
