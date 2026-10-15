@@ -1,0 +1,15 @@
+{
+  "name": "ai-study-assistant-pro",
+  "version": "1.0.0",
+  "description": "AI Study Assistant Pro (StudySync) - Complete Full-Stack GenAI Educational Web App with RAG",
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "backend": "npm --prefix backend start",
+    "backend:dev": "npm --prefix backend run dev",
+    "frontend": "npm --prefix frontend run dev",
+    "test": "npm --prefix backend test"
+  },
+  "keywords": ["genai", "rag", "react", "express", "firebase", "openai", "study-assistant"],
+  "author": "Roshan",
+  "license": "ISC"
+}
